@@ -1,12 +1,32 @@
+"""Rank railroad companies by PageRank over an accident-to-company graph.
+
+Builds a directed bipartite graph in which each accident (keyed by report year
+and county) points at the company that reported it, runs PageRank over it, and
+prints each company's accident count alongside its score. Also plots per-company
+accident counts over time.
+
+Runtime note: this iterates the full dataset row by row and then scans every
+node once per company, so expect several minutes on the complete CSV.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
+from config import dataset_path
 
 # Load the dataset
-dataset_path = r'C:\Users\hlugo\OneDrive - The University of Texas-Rio Grande Valley\Documents\REU GITHUB\summer-REU-project\Highway-Rail_Grade_Crossing_Accident_Data.csv'
-data_field = pd.read_csv(dataset_path, low_memory=False)
+data_field = pd.read_csv(dataset_path(), low_memory=False)
+
+# Drop rows with no reporting company -- they cannot be ranked, and a missing
+# code would become a float node that breaks the prefix match below.
+data_field = data_field.dropna(subset=['Railroad Code'])
 
 # Create an Accident ID combining 'Report Year' and 'County Code'
 data_field['Accident_ID'] = data_field['Report Year'].astype(str) + "_" + data_field['County Code'].astype(str)
@@ -29,7 +49,10 @@ for _, row in data_field.iterrows():
 pagerank = nx.pagerank(G)
 
 # Compute the average PageRank for each company
-avg_pagerank = {company: np.mean([pagerank[node] for node in G.nodes() if node.startswith(company)]) for company in accidents_dict.keys()}
+# NOTE: this matches any node whose id starts with the company code, so company
+# codes that are prefixes of one another share a score. See the README's
+# "Known limitations" section.
+avg_pagerank = {company: np.mean([pagerank[node] for node in G.nodes() if str(node).startswith(company)]) for company in accidents_dict.keys()}
 
 for company in accidents_dict.keys():
     print(f"Company: {company}")
@@ -48,8 +71,8 @@ plt.figure(figsize=(10, 6))
 for company in company_codes:
     company_data = accidents_by_year[accidents_by_year['Railroad Code'] == company]
     plt.plot(company_data['Report Year'], company_data['Accident Count'], label=company)
-plt.legend()
 plt.xlabel('Year')
 plt.ylabel('Number of Accidents')
 plt.title('Number of Accidents Over Time')
+plt.tight_layout()
 plt.show()
