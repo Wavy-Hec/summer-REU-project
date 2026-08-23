@@ -1,3 +1,19 @@
+"""node2vec embeddings of the company graph, clustered with k-means.
+
+Same company graph as ``spectral_kmeans.py`` -- companies joined when they share
+a county, weighted by inverse difference in vehicle damage cost -- but instead of
+a Laplacian eigendecomposition this learns 64-dimensional node2vec embeddings via
+biased random walks, clusters them with k-means (k=4), and projects to 2D with
+t-SNE for plotting.
+
+Produces ``figures/kmeans_node2vec.svg``.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -8,10 +24,12 @@ from sklearn.cluster import KMeans
 from node2vec import Node2Vec
 import seaborn as sns
 
-# Load the dataset
-dataset_path = r'C:\Users\hlugo\OneDrive - The University of Texas-Rio Grande Valley\Documents\REU GITHUB\summer-REU-project\Highway-Rail_Grade_Crossing_Accident_Data.csv'
-data_field = pd.read_csv(dataset_path, low_memory=False)
+from config import dataset_path
 
+FIGURES = Path(__file__).resolve().parents[2] / "figures"
+
+# Load the dataset
+data_field = pd.read_csv(dataset_path(), low_memory=False)
 
 # Get unique company codes and take the first 31
 companies = data_field['Railroad Code'].unique()[:31]
@@ -35,7 +53,7 @@ for _, row in grouped_data.iterrows():
 
 # Add edges to the graph
 for i in range(len(grouped_data)):
-    for j in range(i+1, len(grouped_data)):
+    for j in range(i + 1, len(grouped_data)):
         company1 = grouped_data.loc[i, 'Railroad Code']
         company2 = grouped_data.loc[j, 'Railroad Code']
         county1 = grouped_data.loc[i, 'County Code']
@@ -52,7 +70,7 @@ model = node2vec.fit(window=10, min_count=1, batch_words=4)
 node_embeddings = np.array([model.wv[node] for node in G.nodes])
 
 # Cluster the embeddings
-kmeans = KMeans(n_clusters=4, random_state=0).fit(node_embeddings)
+kmeans = KMeans(n_clusters=4, random_state=0, n_init=10).fit(node_embeddings)
 
 # Create cluster assignments for the nodes
 clusters = {node: kmeans.labels_[i] for i, node in enumerate(G.nodes)}
@@ -63,20 +81,23 @@ n_samples = len(node_ids)
 perplexity_value = min(30, n_samples - 1)
 
 # Reduce dimensionality with t-SNE
+# NOTE: scikit-learn renamed TSNE's n_iter -> max_iter in 1.5 and removed the
+# old name in 1.7.
 trans = TSNE(n_components=2, early_exaggeration=10,
-              perplexity=perplexity_value, n_iter=1000, n_iter_without_progress=500,
-              learning_rate=600.0, random_state=42)
+             perplexity=perplexity_value, max_iter=1000, n_iter_without_progress=500,
+             learning_rate=600.0, random_state=42)
 node_embeddings_2d = trans.fit_transform(node_embeddings)
 
 # Create dataframe for plotting
-data_tsne = pd.DataFrame(zip(node_ids, list(node_embeddings_2d[:,0]),list(node_embeddings_2d[:,1]), [clusters[node] for node in node_ids]),
-                        columns = ['node_ids','x','y', 'kmeans'])
+data_tsne = pd.DataFrame(zip(node_ids, list(node_embeddings_2d[:, 0]), list(node_embeddings_2d[:, 1]), [clusters[node] for node in node_ids]),
+                         columns=['node_ids', 'x', 'y', 'kmeans'])
 
 # Plot using seaborn.
 plt.figure(figsize=(10, 10))
-sns.scatterplot(data=data_tsne, x='x', y='y',hue='kmeans', palette="bright",
-               alpha=0.55, s=200).set_title('Node2vec clusters with k-means')
-plt.savefig('kmeans_node2vec.svg')
+sns.scatterplot(data=data_tsne, x='x', y='y', hue='kmeans', palette="bright",
+                alpha=0.55, s=200).set_title('Node2vec clusters with k-means')
+FIGURES.mkdir(exist_ok=True)
+plt.savefig(FIGURES / 'kmeans_node2vec.svg')
 plt.show()
 
 # Print out nodes and their associated clusters
