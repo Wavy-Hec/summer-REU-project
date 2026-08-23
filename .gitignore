@@ -1,0 +1,20 @@
+# The FRA dataset is large and public -- see data/README.md for the download link
+data/*.csv
+data/*.CSV
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

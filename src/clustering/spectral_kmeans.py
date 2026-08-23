@@ -1,3 +1,19 @@
+"""Spectral clustering of railroad companies by shared vehicle damage cost.
+
+Pipeline: build a company graph whose edges join companies operating in the same
+county and whose weights are the inverse difference in their booked vehicle
+damage cost, take the normalized Laplacian, keep its two smallest eigenvectors,
+sweep k with k-means and pick the k with the best silhouette score, then project
+to 2D with PCA for plotting.
+
+Produces ``figures/kmeans_spectral_clustering.svg``.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -9,11 +25,13 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import normalize
 from scipy.sparse import csgraph
 from scipy.sparse.linalg import eigsh
-from collections import defaultdict
+
+from config import dataset_path
+
+FIGURES = Path(__file__).resolve().parents[2] / "figures"
 
 # Load the dataset
-dataset_path = r'C:\Users\hlugo\OneDrive - The University of Texas-Rio Grande Valley\Documents\REU GITHUB\summer-REU-project\Highway-Rail_Grade_Crossing_Accident_Data.csv'
-data_field = pd.read_csv(dataset_path, low_memory=False)
+data_field = pd.read_csv(dataset_path(), low_memory=False)
 
 # Get unique company codes and take the first 31
 companies = data_field['Railroad Code'].unique()[:31]
@@ -36,19 +54,21 @@ for _, row in grouped_data.iterrows():
     G.add_node(row['Railroad Code'], cost=row['Vehicle Damage Cost'], county=row['County Code'])
 
 # Add edges to the graph
-# for i in range(len(grouped_data)):
-#     for j in range(i+1, len(grouped_data)):
-#         company1 = grouped_data.loc[i, 'Railroad Code']
-#         company2 = grouped_data.loc[j, 'Railroad Code']
-#         county1 = grouped_data.loc[i, 'County Code']
-#         county2 = grouped_data.loc[j, 'County Code']
-#         if county1 == county2:  # Only add an edge if the companies are in the same county
-#             diff = abs(G.nodes[company1]['cost'] - G.nodes[company2]['cost'])
-#             similarity_score = 1 / diff if diff != 0 else 0
-#             G.add_edge(company1, company2, weight=similarity_score)
+for i in range(len(grouped_data)):
+    for j in range(i + 1, len(grouped_data)):
+        company1 = grouped_data.loc[i, 'Railroad Code']
+        company2 = grouped_data.loc[j, 'Railroad Code']
+        county1 = grouped_data.loc[i, 'County Code']
+        county2 = grouped_data.loc[j, 'County Code']
+        if county1 == county2:  # Only add an edge if the companies are in the same county
+            diff = abs(G.nodes[company1]['cost'] - G.nodes[company2]['cost'])
+            similarity_score = 1 / diff if diff != 0 else 0
+            G.add_edge(company1, company2, weight=similarity_score)
 
-# Convert the graph to an adjacency matrix
-adj_matrix = nx.adjacency_matrix(G).toarray()
+# Convert the graph to an adjacency matrix.
+# Symmetrize first: edges are added in one direction only, and both
+# csgraph.laplacian(normed=True) and eigsh assume a symmetric matrix.
+adj_matrix = nx.adjacency_matrix(G.to_undirected(), weight='weight').toarray()
 
 # Compute the normalized Laplacian
 laplacian = csgraph.laplacian(adj_matrix, normed=True)
@@ -64,7 +84,8 @@ best_score = -1
 best_k = 2
 
 # Trying different numbers of clusters and find the best one based on silhouette score
-for k in range(2, 11):
+max_k = min(11, len(eigenvectors))
+for k in range(2, max_k):
     kmeans = KMeans(n_clusters=k, n_init=10)
     labels = kmeans.fit_predict(eigenvectors[:, :2])
 
@@ -88,14 +109,15 @@ pca = PCA(n_components=2)
 principalComponents = pca.fit_transform(eigenvectors)
 
 node_labels = dict(zip(G.nodes, labels))
-node_coordinates = dict(zip(G.nodes, principalComponents))
 
 # Create a scatter plot to visualize the results
 plt.figure(figsize=(8, 8))
 for i in range(len(principalComponents)):
     plt.scatter(principalComponents[i][0], principalComponents[i][1], color=plt.cm.nipy_spectral(labels[i] / 10.), s=100)
 
-plt.savefig('kmeans_spectral_clustering.svg')
+plt.title(f'Spectral embedding, k-means (k={best_k})')
+FIGURES.mkdir(exist_ok=True)
+plt.savefig(FIGURES / 'kmeans_spectral_clustering.svg')
 plt.show()
 
 # Print out nodes and their associated clusters

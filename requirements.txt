@@ -1,0 +1,13 @@
+# Verified against Python 3.11 with the resolved versions noted on each line.
+# numpy is held below 2.0 because gensim (a node2vec dependency) requires it.
+
+numpy>=1.24,<2.0        # 1.26.4
+scipy>=1.10             # 1.17.1
+pandas>=2.0             # 3.0.5
+networkx>=3.0           # 3.6.1
+scikit-learn>=1.5       # 1.9.0   (TSNE max_iter needs >=1.5)
+matplotlib>=3.7         # 3.11.1
+seaborn>=0.13           # 0.13.2
+tqdm>=4.65              # 4.70.0
+node2vec>=0.4.6         # 0.5.0
+gensim>=4.3             # 4.4.0
